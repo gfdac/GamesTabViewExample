@@ -6,10 +6,10 @@
 
 
 import SwiftUI
-internal import Combine
+import Combine
+
 
 // MARK: - Modelo de Dados (Model)
-// Esta struct representa um único jogo, correspondendo à estrutura do JSON.
 struct Game: Codable, Identifiable {
     let id = UUID()
     var game: String
@@ -27,10 +27,19 @@ struct Game: Codable, Identifiable {
     }
 }
 
+// MARK: - Estado do Aplicativo (App State)
+// Um objeto para gerenciar o estado compartilhado da UI.
+class AppState: ObservableObject {
+    @Published var searchText = ""
+}
+
+// Enum para gerenciar as abas de forma segura
+enum AppTab {
+    case games, add, about, search
+}
+
 // MARK: - Carregador de Dados (Data Loader)
-// Uma classe observável para carregar e compartilhar os dados do JSON.
 class DataLoader: ObservableObject {
-    
     @Published var games = [Game]()
 
     init() {
@@ -51,7 +60,6 @@ class DataLoader: ObservableObject {
         }
     }
     
-    // Função para adicionar um novo jogo à lista
     func addGame(_ game: Game) {
         games.insert(game, at: 0)
     }
@@ -60,7 +68,6 @@ class DataLoader: ObservableObject {
 // MARK: - Tela de Adicionar Jogo (Add Game View)
 struct AddGameView: View {
     @EnvironmentObject var dataLoader: DataLoader
-    @Environment(\.presentationMode) var presentationMode
     
     @State private var title = ""
     @State private var developer = ""
@@ -101,14 +108,10 @@ struct AddGameView: View {
         
         dataLoader.addGame(newGame)
         
-        // Limpa os campos após salvar
         title = ""
         developer = ""
         publisher = ""
         yearString = ""
-        
-        // Idealmente, aqui você daria um feedback ao usuário, como fechar a view
-        // ou mostrar uma confirmação. Por simplicidade, apenas limpamos os campos.
     }
 }
 
@@ -154,80 +157,65 @@ struct InfoRow: View {
     }
 }
 
-// MARK: - Acessório da TabView (Accessory View)
-// Esta é a view que será mostrada acima da barra de abas.
+// MARK: - Acessório da TabView (Accessory View) - Simplificado
 struct GameStatsAccessoryView: View {
-    // Lê o estado de posicionamento do ambiente.
-    @Environment(\.tabViewBottomAccessoryPlacement) private var placement
-    // Acessa os dados dos jogos para mostrar estatísticas.
     @EnvironmentObject var dataLoader: DataLoader
-
+    
     var body: some View {
-        // A aparência da view muda com base no posicionamento.
-        if placement == .expanded {
-            // Versão expandida: Mostra mais detalhes.
-            HStack {
-                Text("Total de Jogos na Lista:")
-                Spacer()
-                Text("\(dataLoader.games.count)")
-                    .bold()
-            }
-            .padding(.horizontal)
-            .frame(height: 44) // Altura padrão para um acessório
-            .background(.ultraThinMaterial)
-
-        } else {
-            // Versão em linha (inline): Mais compacta.
-            HStack {
-                Spacer()
-                Text("\(dataLoader.games.count) Jogos")
-                    .font(.caption)
-                    .bold()
-                Spacer()
-            }
-            .padding(.horizontal)
+        HStack {
+            Text("\(dataLoader.games.count) Jogos na Lista")
+                .font(.callout.weight(.medium))
+            Spacer()
         }
+        .frame(height: 44)
+        .padding(.horizontal)
+        .background(.ultraThinMaterial)
     }
 }
 
 // MARK: - Tela da Lista de Jogos (Games List Tab)
 struct GamesListView: View {
     @EnvironmentObject var dataLoader: DataLoader
-    @State private var searchText = ""
+    @EnvironmentObject var appState: AppState
 
     var filteredGames: [Game] {
-        searchText.isEmpty ? dataLoader.games : dataLoader.games.filter { $0.game.localizedCaseInsensitiveContains(searchText) }
+        if appState.searchText.isEmpty {
+            return dataLoader.games
+        } else {
+            return dataLoader.games.filter { $0.game.localizedCaseInsensitiveContains(appState.searchText) }
+        }
     }
 
     var body: some View {
-        NavigationView {
-            List(filteredGames) { game in
-                NavigationLink(destination: GameDetailView(game: game)) {
-                    VStack(alignment: .leading) {
-                        Text(game.game).font(.headline)
-                        Text(game.dev).font(.subheadline).foregroundColor(.secondary)
-                    }
+        // A NavigationView agora é controlada pela TabView quando necessário
+        List(filteredGames) { game in
+            NavigationLink(destination: GameDetailView(game: game)) {
+                VStack(alignment: .leading) {
+                    Text(game.game).font(.headline)
+                    Text(game.dev).font(.subheadline).foregroundColor(.secondary)
                 }
             }
-            .navigationTitle("Jogos de 3DS")
-            .searchable(text: $searchText, prompt: "Buscar por nome do jogo")
         }
+        .navigationTitle("Jogos de 3DS")
     }
 }
 
 // MARK: - Tela Sobre (About Tab)
 struct AboutView: View {
     var body: some View {
-        VStack(spacing: 20) {
-            Image(systemName: "gamecontroller.fill")
-                .font(.system(size: 60))
-                .foregroundColor(.accentColor)
-            Text("3DS Game Explorer")
-                .font(.largeTitle)
-                .bold()
-            Text("Este app demonstra as novas funcionalidades da TabView no SwiftUI, incluindo o TabViewBottomAccessoryPlacement.")
-                .multilineTextAlignment(.center)
-                .padding(.horizontal)
+        NavigationView {
+            VStack(spacing: 20) {
+                Image(systemName: "gamecontroller.fill")
+                    .font(.system(size: 60))
+                    .foregroundColor(.accentColor)
+                Text("3DS Game Explorer")
+                    .font(.largeTitle)
+                    .bold()
+                Text("Este app demonstra as novas funcionalidades da TabView no SwiftUI, incluindo o TabViewBottomAccessoryPlacement.")
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal)
+            }
+            .navigationTitle("Sobre")
         }
     }
 }
@@ -235,43 +223,47 @@ struct AboutView: View {
 
 // MARK: - View Principal com TabView (Main View)
 struct ContentView: View {
-    // Cria uma única instância do DataLoader e a compartilha com as subviews.
     @StateObject private var dataLoader = DataLoader()
+    @StateObject private var appState = AppState()
+    @State private var selectedTab: AppTab = .games
 
     var body: some View {
-        TabView {
-            // Aba 1: Lista de Jogos
-            GamesListView()
-                .tabItem {
-                    Label("Jogos", systemImage: "list.bullet")
-                }
+        // A TabView agora controla a seleção e a interface de busca
+        TabView(selection: $selectedTab) {
             
-            // Aba 2: Adicionar Jogo
-            AddGameView()
-                .tabItem {
-                    Label("Adicionar", systemImage: "plus.circle.fill")
-                }
+            // Aba 1: Lista de Jogos - Sintaxe Unificada
+            Tab("Jogos", systemImage: "list.bullet", value: .games) {
+                NavigationView { GamesListView() }
+            }
+            
+            // Aba 2: Adicionar Jogo - Sintaxe Unificada
+            Tab("Adicionar", systemImage: "plus.circle.fill", value: .add) {
+                AddGameView()
+            }
 
-            // Aba 3: Sobre
-            AboutView()
-                .tabItem {
-                    Label("Sobre", systemImage: "info.circle.fill")
+            // Aba 3: Sobre - Sintaxe Unificada
+            Tab("Sobre", systemImage: "info.circle.fill", value: .about) {
+                AboutView()
+            }
+            
+            // Aba 4: Busca (Aba Especial com role: .search)
+            Tab("Buscar", systemImage: "magnifyingglass", value: .search, role: .search) {
+                NavigationView {
+                    GamesListView()
                 }
+            }
         }
-        // Adiciona a visualização acessória à TabView.
+        // O .searchable é aplicado na TabView, e o sistema o ativa na aba de busca
+        .searchable(text: $appState.searchText, placement: .automatic)
+        // O acessório agora é mais simples e só aparece quando a busca não está ativa
         .tabViewBottomAccessory {
-            GameStatsAccessoryView()
+            if selectedTab != .search {
+                GameStatsAccessoryView()
+            }
         }
-        // Habilita o comportamento de minimizar a barra ao rolar.
-        // Isso acionará a mudança no `tabViewBottomAccessoryPlacement`.
+        // Adiciona o comportamento de minimizar ao rolar
         .tabBarMinimizeBehavior(.onScrollDown)
-        // Fornece o dataLoader para as views filhas que precisam dele.
         .environmentObject(dataLoader)
+        .environmentObject(appState)
     }
 }
-
-
-#Preview {
-    ContentView()
-}
-
