@@ -157,13 +157,15 @@ struct InfoRow: View {
     }
 }
 
-// MARK: - Acessório da TabView (Accessory View) - Simplificado
+// MARK: - Acessório da TabView (Accessory View) - Atualizado
 struct GameStatsAccessoryView: View {
-    @EnvironmentObject var dataLoader: DataLoader
+    let count: Int
+    let isSearching: Bool
     
     var body: some View {
         HStack {
-            Text("\(dataLoader.games.count) Jogos na Lista")
+            // Mostra texto diferente se o usuário está buscando ou não
+            Text(isSearching ? "\(count) Resultados" : "\(count) Jogos na Lista")
                 .font(.callout.weight(.medium))
             Spacer()
         }
@@ -175,20 +177,12 @@ struct GameStatsAccessoryView: View {
 
 // MARK: - Tela da Lista de Jogos (Games List Tab)
 struct GamesListView: View {
-    @EnvironmentObject var dataLoader: DataLoader
-    @EnvironmentObject var appState: AppState
-
-    var filteredGames: [Game] {
-        if appState.searchText.isEmpty {
-            return dataLoader.games
-        } else {
-            return dataLoader.games.filter { $0.game.localizedCaseInsensitiveContains(appState.searchText) }
-        }
-    }
+    // Recebe a lista de jogos já filtrada para exibir
+    let games: [Game]
 
     var body: some View {
         // A NavigationView agora é controlada pela TabView quando necessário
-        List(filteredGames) { game in
+        List(games) { game in
             NavigationLink(destination: GameDetailView(game: game)) {
                 VStack(alignment: .leading) {
                     Text(game.game).font(.headline)
@@ -227,41 +221,51 @@ struct ContentView: View {
     @StateObject private var appState = AppState()
     @State private var selectedTab: AppTab = .games
 
+    // A lógica de filtragem agora reside na view principal
+    private var filteredGames: [Game] {
+        if appState.searchText.isEmpty {
+            return dataLoader.games
+        } else {
+            return dataLoader.games.filter { $0.game.localizedCaseInsensitiveContains(appState.searchText) }
+        }
+    }
+
     var body: some View {
-        // A TabView agora controla a seleção e a interface de busca
         TabView(selection: $selectedTab) {
             
-            // Aba 1: Lista de Jogos - Sintaxe Unificada
+            // Aba 1: Lista de Jogos - Passa a lista filtrada
             Tab("Jogos", systemImage: "list.bullet", value: .games) {
-                NavigationView { GamesListView() }
+                NavigationView { GamesListView(games: filteredGames) }
             }
             
-            // Aba 2: Adicionar Jogo - Sintaxe Unificada
+            // Aba 2: Adicionar Jogo
             Tab("Adicionar", systemImage: "plus.circle.fill", value: .add) {
                 AddGameView()
             }
 
-            // Aba 3: Sobre - Sintaxe Unificada
+            // Aba 3: Sobre
             Tab("Sobre", systemImage: "info.circle.fill", value: .about) {
                 AboutView()
             }
             
-            // Aba 4: Busca (Aba Especial com role: .search)
+            // Aba 4: Busca - Passa a lista filtrada
             Tab("Buscar", systemImage: "magnifyingglass", value: .search, role: .search) {
                 NavigationView {
-                    GamesListView()
+                    GamesListView(games: filteredGames)
                 }
             }
         }
-        // O .searchable é aplicado na TabView, e o sistema o ativa na aba de busca
         .searchable(text: $appState.searchText, placement: .automatic)
-        // O acessório agora é mais simples e só aparece quando a busca não está ativa
+        // Lógica atualizada para mostrar o acessório
         .tabViewBottomAccessory {
-            if selectedTab != .search {
-                GameStatsAccessoryView()
+            // Mostra o acessório apenas na aba de jogos e quando não está buscando
+            if selectedTab == .games && appState.searchText.isEmpty {
+                GameStatsAccessoryView(count: dataLoader.games.count, isSearching: false)
+            } else if selectedTab == .search && !appState.searchText.isEmpty {
+                // Na aba de busca, mostra o número de resultados
+                GameStatsAccessoryView(count: filteredGames.count, isSearching: true)
             }
         }
-        // Adiciona o comportamento de minimizar ao rolar
         .tabBarMinimizeBehavior(.onScrollDown)
         .environmentObject(dataLoader)
         .environmentObject(appState)
